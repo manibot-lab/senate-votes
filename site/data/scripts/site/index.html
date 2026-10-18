@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Senate nominee votes</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:wght@500;600&family=Public+Sans:wght@400;600&display=swap">
+<style>
+:root{--bg:#f2f4f6;--panel:#fff;--ink:#14202b;--mute:#5c6b78;--line:#d9dfe5;--R:#b3261e;--D:#1f5fa8;--I:#7a7a7a;--ok:#2e7d4f;color-scheme:light}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1418;--panel:#161d23;--ink:#e6ebef;--mute:#8d9aa6;--line:#27313a;--R:#e0645c;--D:#5b9be0;--I:#9a9a9a;--ok:#5fbf86;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Public Sans",system-ui,sans-serif}
+main{max-width:960px;margin:0 auto;padding:32px 16px 64px}
+h1{font:600 clamp(1.8rem,5vw,2.6rem)/1.1 Newsreader,Georgia,serif;margin:0 0 6px}
+.meta{color:var(--mute);margin:0 0 24px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:16px}
+.tabs button{background:none;border:0;border-bottom:3px solid transparent;color:var(--mute);font:600 1rem "Public Sans",system-ui,sans-serif;padding:10px 14px;cursor:pointer}
+.tabs button[aria-selected=true]{color:var(--ink);border-color:var(--ink)}
+input[type=search]{width:100%;padding:10px 12px;margin-bottom:16px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;font:inherit}
+:focus-visible{outline:2px solid var(--D);outline-offset:2px}
+details{background:var(--panel);border:1px solid var(--line);border-radius:6px;margin-bottom:8px}
+summary{display:grid;grid-template-columns:6.5rem 1fr;gap:4px 12px;padding:12px 14px;cursor:pointer;list-style:none}
+summary::-webkit-details-marker{display:none}
+.date{color:var(--mute);font-size:.9rem}
+.title{font-weight:600}
+.sub{grid-column:2;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:.9rem;color:var(--mute)}
+.res{font-weight:600}.res.ok{color:var(--ok)}.res.no{color:var(--R)}
+.bar{display:flex;width:160px;height:10px;border-radius:2px;overflow:hidden;background:var(--line)}
+.bar i{display:block}.bar b{width:2px;background:var(--ink)}
+.bar .R{background-color:var(--R)}.bar .D{background-color:var(--D)}.bar .I{background-color:var(--I)}
+.bar .N{background-image:repeating-linear-gradient(45deg,transparent 0 3px,rgba(255,255,255,.6) 3px 5px)}
+.body{padding:0 14px 14px;font-size:.92rem;border-top:1px solid var(--line)}
+.body h3{font-size:.95rem;margin:12px 0 4px}
+.body p{margin:0;color:var(--mute)}
+.party-R{color:var(--R)}.party-D{color:var(--D)}.party-I{color:var(--I)}
+.wrap{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:6px}
+table{border-collapse:collapse;width:100%;min-width:560px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+th{cursor:pointer;color:var(--mute);font-weight:600;white-space:nowrap}
+th[aria-sort]{color:var(--ink)}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+tr.row{cursor:pointer}tr.row:hover{background:var(--bg)}
+tr.more td{background:var(--bg);font-size:.9rem;color:var(--mute)}
+.empty{padding:32px 0;color:var(--mute)}
+@media(max-width:560px){summary{grid-template-columns:1fr}.sub{grid-column:1}.bar{width:100%}}
+</style>
+</head>
+<body>
+<main>
+<h1>How senators vote on nominees</h1>
+<p class="meta" id="meta">Loading votes.</p>
+<div class="tabs" role="tablist">
+<button role="tab" aria-selected="true" data-tab="nominees">By nominee</button>
+<button role="tab" aria-selected="false" data-tab="senators">By senator</button>
+</div>
+<input type="search" id="q" placeholder="Search nominees" aria-label="Search">
+<div id="nominees"></div>
+<div id="senators" hidden></div>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt=d=>{const x=new Date(d+"T00:00:00");return isNaN(x)?d:x.toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric"})};
+let D,tab="nominees",S={},sortKey="N",sortDir=-1,open=new Set();
+const sen=id=>D.senators[id]||{n:id,p:"?",s:""};
+const pc=p=>["R","D"].includes(p)?p:"I";
+const label=id=>{const s=sen(id);return `<span class="party-${pc(s.p)}">${esc(s.n)} (${esc(s.p)}-${esc(s.s)})</span>`};
+
+function bar(v){
+  const t={Y:{R:0,D:0,I:0},N:{R:0,D:0,I:0}};
+  for(const[id,c]of Object.entries(v.votes))if(c==="Y"||c==="N")t[c][pc(sen(id).p)]++;
+  const seg=c=>["R","D","I"].filter(p=>t[c][p]).map(p=>`<i class="${p} ${c}" style="flex:${t[c][p]}" title="${c==="Y"?"Yea":"Nay"} ${p}: ${t[c][p]}"></i>`).join("");
+  return `<span class="bar" role="img" aria-label="${esc(v.yeas)} yea, ${esc(v.nays)} nay">${seg("Y")}<b></b>${seg("N")}</span>`;
+}
+function list(v,c){
+  const ids=Object.keys(v.votes).filter(i=>v.votes[i]===c).sort((a,b)=>sen(a).n.localeCompare(sen(b).n));
+  return ids.length?ids.map(label).join(", "):"None";
+}
+function renderNominees(){
+  const q=$("#q").value.toLowerCase();
+  const vs=D.votes.filter(v=>(v.title+" "+v.nomination).toLowerCase().includes(q));
+  $("#nominees").innerHTML=vs.length?vs.map(v=>{
+    const no=/reject|not agreed/i.test(v.result),ok=!no&&/confirm|agreed/i.test(v.result);
+    return `<details><summary><span class="date">${fmt(v.date)}</span><span class="title">${esc(v.title)}</span>
+<span class="sub"><span class="res ${ok?"ok":no?"no":""}">${esc(v.result)}</span><span>${esc(v.yeas)} yea, ${esc(v.nays)} nay</span>${bar(v)}</span></summary>
+<div class="body"><h3>Voted nay</h3><p>${list(v,"N")}</p><h3>Not voting</h3><p>${list(v,"NV")}</p><h3>Present</h3><p>${list(v,"P")}</p></div></details>`}).join("")
+    :`<p class="empty">${D.votes.length?"No nominees match that search.":"No votes yet. Run the Update votes and deploy workflow from the Actions tab."}</p>`;
+}
+function renderSenators(){
+  const q=$("#q").value.toLowerCase();
+  const val=(s,k)=>k==="name"?sen(s.id).n:s[k];
+  const rows=Object.values(S).filter(s=>(sen(s.id).n+" "+sen(s.id).s).toLowerCase().includes(q))
+    .sort((a,b)=>{const x=val(a,sortKey),y=val(b,sortKey);return (x>y?1:x<y?-1:0)*sortDir});
+  const th=(k,t,n)=>`<th class="${n?"n":""}" data-k="${k}" ${sortKey===k?`aria-sort="${sortDir>0?"ascending":"descending"}"`:""}>${t}</th>`;
+  $("#senators").innerHTML=rows.length?`<div class="wrap"><table><thead><tr>${th("name","Senator")}${th("Y","Yea",1)}${th("N","Nay",1)}${th("NV","Missed",1)}${th("pct","Nay %",1)}</tr></thead><tbody>`+
+    rows.map(s=>`<tr class="row" data-id="${esc(s.id)}"><td>${label(s.id)}</td><td class="n">${s.Y}</td><td class="n">${s.N}</td><td class="n">${s.NV}</td><td class="n">${s.pct.toFixed(0)}%</td></tr>`+
+    (open.has(s.id)?`<tr class="more"><td colspan="5">${s.navs.length?"Voted nay on: "+s.navs.map(v=>esc(v.title)+" ("+fmt(v.date)+")").join("; "):"No nay votes."}</td></tr>`:"")).join("")+`</tbody></table></div>`
+    :`<p class="empty">No senators to show.</p>`;
+}
+function render(){tab==="nominees"?renderNominees():renderSenators()}
+function init(){
+  for(const v of D.votes)for(const[id,c]of Object.entries(v.votes)){
+    const s=S[id]??={id,Y:0,N:0,NV:0,navs:[]};
+    if(c==="Y")s.Y++;else if(c==="N"){s.N++;s.navs.push(v)}else s.NV++;
+  }
+  for(const s of Object.values(S))s.pct=s.Y+s.N?100*s.N/(s.Y+s.N):0;
+  $("#meta").textContent=D.votes.length?`${D.votes.length} confirmation votes tracked. Last updated ${fmt(D.updated)}.`:"No votes loaded yet.";
+  render();
+}
+document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{
+  tab=b.dataset.tab;
+  document.querySelectorAll(".tabs button").forEach(x=>x.setAttribute("aria-selected",x===b));
+  $("#nominees").hidden=tab!=="nominees";$("#senators").hidden=tab!=="senators";
+  $("#q").placeholder=tab==="nominees"?"Search nominees":"Search senators or states";render();
+});
+$("#q").oninput=render;
+$("#senators").onclick=e=>{
+  const h=e.target.closest("th");
+  if(h){const k=h.dataset.k;sortDir=sortKey===k?-sortDir:(k==="name"?1:-1);sortKey=k;return render()}
+  const r=e.target.closest("tr.row");
+  if(r){const id=r.dataset.id;open.has(id)?open.delete(id):open.add(id);render()}
+};
+fetch("data/votes.json").then(r=>r.json()).then(d=>{D=d;init()}).catch(()=>{$("#meta").textContent="Could not load data/votes.json."});
+</script>
+</body>
+</html>
